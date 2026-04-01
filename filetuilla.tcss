@@ -1,0 +1,15 @@
+FileTuilla {
+    Input {
+        width: 20%;
+        border: round green;
+        margin: 1;
+    }
+    Label {
+        align: center middle;
+        margin: 1;
+    }
+    Button {
+        margin: 1;
+    }
+
+}
