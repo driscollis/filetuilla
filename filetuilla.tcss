@@ -42,6 +42,10 @@ FileTuilla {
        border: round yellow;
     }
 
+    #file_tables {
+        height: 20%;
+    }
+
     #file_info_row {
         height: auto;
 
