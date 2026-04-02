@@ -1,16 +1,19 @@
+import platform
+
 from pathlib import Path
 
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.widgets import Button, DirectoryTree, Header, Input
-from textual.widgets import Label, RichLog, Tree
+from textual.widgets import Button, DataTable, DirectoryTree, Header
+from textual.widgets import Input, Label, RichLog, Tree
 
 
 class FileTuilla(App):
     CSS_PATH = "filetuilla.tcss"
 
     def compose(self) -> ComposeResult:
+        columns = ("Filename", "Filesize", "Filetype", "Last modified")
         host = Input(id="host")
         host.border_title = "Host"
         username = Input(id="username")
@@ -19,11 +22,21 @@ class FileTuilla(App):
         password.border_title = "Password"
         port = Input(id="port")
         port.border_title = "Port"
-        local_site = Input(id="local_site")
-        local_site.border_title = "Local site"
-        remote_site = Input(id="remote_site")
-        remote_site.border_title = "Remote site"
+
+        if "Windows" in platform.platform():
+            self.local_site = Input("C:\\", id="local_site")
+        else:
+            self.local_site = Input("/", id="local_site")
+        self.local_site.border_title = "Local site"
+        self.remote_site = Input(id="remote_site")
+        self.remote_site.border_title = "Remote site"
+
         local_tree = DirectoryTree("/", id="local_file_tree")
+
+        local_files_table = DataTable(id="local_files_table")
+        local_files_table.add_columns(*columns)
+        remote_files_table = DataTable(id="remote_files_table")
+        remote_files_table.add_columns(*columns)
 
         yield Header()
         yield VerticalScroll(
@@ -37,8 +50,8 @@ class FileTuilla(App):
             ),
             RichLog(id="ftp_log"),
             Horizontal(
-                local_site,
-                remote_site,
+                self.local_site,
+                self.remote_site,
                 id="site_inputs"
             ),
             Horizontal(
@@ -46,7 +59,13 @@ class FileTuilla(App):
                 Tree("Remote", id="remote_file_tree"),
                 id="tree_row"
             ),
+
             # File info data tables
+            Horizontal(
+                local_files_table,
+                remote_files_table,
+                id="file_tables"
+            ),
 
             # File info row (number of files/directories, total size)
             Horizontal(
@@ -54,13 +73,14 @@ class FileTuilla(App):
                 Label("remote", id="remote_file_info"),
                 id="file_info_row",
             ),
-            # Transfer info
 
+            # Transfer info
             id="main_container"
         )
 
     def on_mount(self) -> None:
         self.title = "FileTuilla"
+
 
 if __name__ == "__main__":
     app = FileTuilla()
