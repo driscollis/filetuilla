@@ -1,5 +1,6 @@
 import platform
 
+from datetime import datetime
 from pathlib import Path
 
 from textual import on
@@ -49,37 +50,59 @@ class FileTuilla(App):
                 id="connection_form",
             ),
             RichLog(id="ftp_log"),
+            Horizontal(self.local_site, self.remote_site, id="site_inputs"),
             Horizontal(
-                self.local_site,
-                self.remote_site,
-                id="site_inputs"
+                local_tree, Tree("Remote", id="remote_file_tree"), id="tree_row"
             ),
-            Horizontal(
-                local_tree,
-                Tree("Remote", id="remote_file_tree"),
-                id="tree_row"
-            ),
-
             # File info data tables
-            Horizontal(
-                local_files_table,
-                remote_files_table,
-                id="file_tables"
-            ),
-
+            Horizontal(local_files_table, remote_files_table, id="file_tables"),
             # File info row (number of files/directories, total size)
             Horizontal(
                 Label("local", id="local_file_info"),
                 Label("remote", id="remote_file_info"),
                 id="file_info_row",
             ),
-
             # Transfer info
-            id="main_container"
+            id="main_container",
         )
 
     def on_mount(self) -> None:
         self.title = "FileTuilla"
+        self.update_local_file_info_table()
+
+    @on(DirectoryTree.DirectorySelected, "#local_file_tree")
+    def on_local_file_tree_selected(
+        self, event: DirectoryTree.DirectorySelected
+    ) -> None:
+        """
+        Update the local file info table with the contents of the local directory when a directory is selected.
+        """
+        selected_path = event.path
+        self.local_site.value = str(selected_path)
+        self.update_local_file_info_table()
+
+    def update_local_file_info_table(self) -> None:
+        """
+        Update the local file info table with the contents of the currently selected directory.
+        """
+        local_path = Path(self.local_site.value)
+        files = []
+        if local_path.exists():
+            for path in local_path.iterdir():
+                if path.is_file():
+                    modified_time = datetime.fromtimestamp(path.stat().st_mtime)
+                    files.append(
+                        (
+                            path.name,
+                            path.stat().st_size,
+                            path.suffix,
+                            f"{modified_time:%Y-%m-%d %H:%M:%S}",
+                        )
+                    )
+        local_files_table = self.query_one("#local_files_table", DataTable)
+        local_files_table.clear()
+        for file_info in files:
+            local_files_table.add_row(*map(str, file_info))
 
 
 if __name__ == "__main__":
