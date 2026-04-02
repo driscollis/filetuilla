@@ -1,15 +1,53 @@
 FileTuilla {
+
     Input {
         width: 20%;
         border: round green;
         margin: 1;
     }
+
     Label {
         align: center middle;
         margin: 1;
     }
+
     Button {
         margin: 1;
+    }
+
+    RichLog {
+        margin: 1;
+        border: round blue;
+        height: 20%;
+    }
+
+    #connection_form {
+        height: auto;
+    }
+
+    #site_inputs {
+        height: auto;
+        Input {
+            width: 50%;
+        }
+    }
+
+    #remote_file_tree {
+        border: round yellow;
+        height: auto;
+        width: 50%;
+    }
+
+    #local_file_tree {
+       border: round yellow;
+    }
+
+    #file_info_row {
+        height: auto;
+
+        Label {
+            width: 50%;
+        }
     }
 
 }
