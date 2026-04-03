@@ -23,4 +23,4 @@ repos:
   hooks:
     # Run the linter.
     - id: ty-check
-      additional_dependencies: [textual]
+      additional_dependencies: [textual, paramiko]

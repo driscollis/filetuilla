@@ -1,3 +1,4 @@
+import paramiko
 import platform
 import stat
 
@@ -9,6 +10,8 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, DataTable, DirectoryTree, Header
 from textual.widgets import Input, Label, RichLog, Tree
+
+from screens.warning_screen import WarningScreen
 
 
 class FileTuilla(App):
@@ -24,7 +27,7 @@ class FileTuilla(App):
         host.border_title = "Host"
         username = Input(id="username")
         username.border_title = "Username"
-        password = Input(id="password")
+        password = Input(id="password", password=True)
         password.border_title = "Password"
         port = Input(id="port")
         port.border_title = "Port"
@@ -94,6 +97,43 @@ class FileTuilla(App):
         self.query_one("#local_file_actions").border_title = "Local"
         self.query_one("#remote_file_actions").border_title = "Remote"
 
+    @on(Button.Pressed, "#connect")
+    def on_connect(self, event: Button.Pressed) -> None:
+        """
+        Event handler for when the connect button is pressed.
+
+        Connects to the FTP/SFTP server using the provided credentials.
+        """
+        host = self.query_one("#host", Input).value
+        port_number = self.query_one("#port", Input).value
+        port = int(port_number) if port_number else 21
+        username = self.query_one("#username", Input).value
+        password = self.query_one("#password", Input).value
+
+        if not host:
+            self.push_screen(WarningScreen("Host is required", cancel=False))
+            return
+        if not username:
+            self.push_screen(WarningScreen("Username is required", cancel=False))
+            return
+        if not password:
+            self.push_screen(WarningScreen("Password is required", cancel=False))
+            return
+
+        self._connect_ftp(host, port, username, password)
+
+    def _connect_ftp(self, host: str, port: int, username: str, password: str) -> None:
+        """
+        Make connection to FTP/SFTP server.
+        """
+        # TODO - check if SFTP
+        ssh_client = paramiko.SSHClient()
+        # TODO - add check for skipping missing host keys
+        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh_client.connect(host, port, username, password)
+        self.ftp_client = ssh_client.open_sftp()
+        self.update_remote_file_info_table()
+
     @on(DirectoryTree.DirectorySelected, "#local_file_tree")
     def on_local_file_tree_selected(
         self, event: DirectoryTree.DirectorySelected
@@ -151,16 +191,32 @@ class FileTuilla(App):
             f"{num_files} files and {num_dirs} directories, Total size: {total_size} B"
         )
 
-    @on(DirectoryTree.DirectorySelected, "#remote_file_tree")
+    @on(Tree.NodeSelected, "#remote_file_tree")
     def on_remote_file_tree_selected(
         self, event: DirectoryTree.DirectorySelected
     ) -> None:
         """
         Update the remote file info table with the contents of the remote directory when a directory is selected.
         """
-        selected_path = event.path
-        self.remote_site.value = str(selected_path)
+        selected_path = event.node.label
+        self.notify("Remote directory selected: %s" % selected_path)
+        if self.remote_site.value:
+            selected_path = f"{self.remote_site.value}/{selected_path}"
+        self.remote_site.value = selected_path  # type: ignore
+        return
         self.update_remote_file_info_table()
+
+    def update_remote_directory_tree(self, dirs: list[str]) -> None:
+        """
+        Update the remote directory tree with the contents of the currently selected directory.
+        """
+        if self.remote_site.value:
+            remote_tree = self.query_one("#remote_file_tree", Tree)
+            remote_tree.clear()
+            remote_tree.root.label = self.remote_site.value
+            remote_tree.root.expand()
+            for dir in dirs:
+                remote_tree.root.add(dir)
 
     def update_remote_file_info_table(self) -> None:
         """
@@ -196,6 +252,7 @@ class FileTuilla(App):
             for file_info in files:
                 remote_files_table.add_row(*map(str, file_info))
 
+            self.update_remote_directory_tree(dirs)
             # Update local file info label
             self.update_remote_file_info_label(files, dirs, total_size)
 
