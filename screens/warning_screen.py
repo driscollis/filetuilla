@@ -6,20 +6,27 @@ from textual.widgets import Button, Label
 
 
 class WarningScreen(ModalScreen):
-    def __init__(self, message: str, *args, **kwargs):
+    def __init__(self, message: str, cancel: bool = True, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.message = message
+        self.cancel = cancel
 
     def compose(self) -> ComposeResult:
-        yield Vertical(
-            Label(self.message, id="warning_message"),
-            Horizontal(
+        if self.cancel:
+            yield Vertical(
+                Label(self.message, id="warning_message"),
+                Horizontal(
+                    Button("OK", id="ok_button", variant="primary"),
+                    Button("Cancel", id="cancel_button", variant="error"),
+                    id="warning_buttons",
+                ),
+                id="warning_screen",
+            )
+        else:
+            yield Vertical(
+                Label(self.message, id="warning_message"),
                 Button("OK", id="ok_button", variant="primary"),
-                Button("Cancel", id="cancel_button", variant="error"),
-                id="warning_buttons",
-            ),
-            id="warning_screen",
-        )
+            )
 
     @on(Button.Pressed, "#ok_button")
     def on_okay(self, event: Button.Pressed) -> None:
