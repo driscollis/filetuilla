@@ -1,4 +1,5 @@
 import platform
+import stat
 
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,10 @@ from textual.widgets import Input, Label, RichLog, Tree
 
 class FileTuilla(App):
     CSS_PATH = "filetuilla.tcss"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.ftp_client = None
 
     def compose(self) -> ComposeResult:
         columns = ("Filename", "Filesize", "Filetype", "Last modified")
@@ -52,7 +57,7 @@ class FileTuilla(App):
             RichLog(id="ftp_log"),
             Horizontal(self.local_site, self.remote_site, id="site_inputs"),
             Horizontal(
-                local_tree, Tree("Remote", id="remote_file_tree"), id="tree_row"
+                local_tree, Tree("", id="remote_file_tree"), id="tree_row"
             ),
             # File info data tables
             Horizontal(local_files_table, remote_files_table, id="file_tables"),
@@ -78,8 +83,9 @@ class FileTuilla(App):
         Update the local file info table with the contents of the local directory when a directory is selected.
         """
         selected_path = event.path
-        self.local_site.value = str(selected_path)
-        self.update_local_file_info_table()
+        if str(selected_path) != "":
+            self.local_site.value = str(selected_path)
+            self.update_local_file_info_table()
 
     def update_local_file_info_table(self) -> None:
         """
@@ -103,6 +109,48 @@ class FileTuilla(App):
         local_files_table.clear()
         for file_info in files:
             local_files_table.add_row(*map(str, file_info))
+
+    @on(DirectoryTree.DirectorySelected, "#remote_file_tree")
+    def on_remote_file_tree_selected(
+        self, event: DirectoryTree.DirectorySelected
+    ) -> None:
+        """
+        Update the remote file info table with the contents of the remote directory when a directory is selected.
+        """
+        selected_path = event.path
+        self.remote_site.value = str(selected_path)
+        self.update_remote_file_info_table()
+
+    def update_remote_file_info_table(self) -> None:
+        """
+        Update the remote file info table with the contents of the currently selected directory.
+        """
+        if self.ftp_client:
+            # TODO - need to test to see if this works for FTP too
+            # SFTP Implementation
+            paths = self.ftp_client.listdir(self.remote_site.value)
+            files = []
+            for path in paths:
+                full_remote_path = f"{self.remote_site.value}/{path}"
+                attrs = self.ftp_client.stat(full_remote_path)
+                mode = attrs.st_mode
+                if stat.S_ISREG(mode):
+                    # path is a file
+                    modified_time = datetime.fromtimestamp(attrs.st_mtime)
+                    files.append(
+                        (
+                            path,
+                            attrs.st_size,
+                            Path(path).suffix,
+                            f"{modified_time:%Y-%m-%d %H:%M:%S}",
+                        )
+                    )
+            remote_files_table = self.query_one("#remote_files_table", DataTable)
+            remote_files_table.clear()
+            for file_info in files:
+                remote_files_table.add_row(*map(str, file_info))
+
+
 
 
 if __name__ == "__main__":
