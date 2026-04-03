@@ -54,4 +54,14 @@ FileTuilla {
         }
     }
 
+    #local_file_actions {
+        border: round red;
+        height: auto;
+    }
+
+    #remote_file_actions{
+        border: round red;
+        height: auto;
+    }
+
 }

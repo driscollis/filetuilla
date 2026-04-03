@@ -65,6 +65,25 @@ class FileTuilla(App):
                 Label("remote", id="remote_file_info"),
                 id="file_info_row",
             ),
+            # Buttons to control file actions locally and remotely
+            Horizontal(
+                Horizontal(
+                    Button("Upload", id="upload", variant="success"),
+                    Button("Delete", id="local_delete", variant="error"),
+                    Button("Rename", id="local_rename", variant="primary"),
+                    Button("New Folder", id="local_new_folder", variant="primary"),
+                    id="local_file_actions",
+                ),
+                Horizontal(
+                    Button("Download", id="download", variant="primary"),
+                    Button("Delete", id="remote_delete", variant="error"),
+                    Button("Rename", id="remote_rename", variant="primary"),
+                    Button("New Folder", id="remote_new_folder", variant="primary"),
+                    Button("Up Dir", id="up_dir", variant="success"),
+                    id="remote_file_actions",
+                ),
+                id="file_action_controls_row",
+            ),
             # Transfer info
             id="main_container",
         )
@@ -72,6 +91,8 @@ class FileTuilla(App):
     def on_mount(self) -> None:
         self.title = "FileTuilla"
         self.update_local_file_info_table()
+        self.query_one("#local_file_actions").border_title = "Local"
+        self.query_one("#remote_file_actions").border_title = "Remote"
 
     @on(DirectoryTree.DirectorySelected, "#local_file_tree")
     def on_local_file_tree_selected(
