@@ -23,4 +23,4 @@ repos:
   hooks:
     # Run the linter.
     - id: ty-check
-      exclude: Scripts/ADOTestResultUploader.py
+      additional_dependencies: [textual]
