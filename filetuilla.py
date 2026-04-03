@@ -150,6 +150,8 @@ class FileTuilla(App):
             # SFTP Implementation
             paths = self.ftp_client.listdir(self.remote_site.value)
             files = []
+            dirs = []
+            total_size = 0
             for path in paths:
                 full_remote_path = f"{self.remote_site.value}/{path}"
                 attrs = self.ftp_client.stat(full_remote_path)
@@ -165,10 +167,29 @@ class FileTuilla(App):
                             f"{modified_time:%Y-%m-%d %H:%M:%S}",
                         )
                     )
+                    total_size += attrs.st_size
+                elif stat.S_ISDIR(mode):
+                    dirs.append(path)
             remote_files_table = self.query_one("#remote_files_table", DataTable)
             remote_files_table.clear()
             for file_info in files:
                 remote_files_table.add_row(*map(str, file_info))
+
+            # Update local file info label
+            self.update_remote_file_info_label(files, dirs, total_size)
+
+    def update_remote_file_info_label(
+        self, files: list, dirs: list, total_size: int
+    ) -> None:
+        """
+        Update the remote file info label with the number of files/directories
+        """
+        num_files = len(files)
+        num_dirs = len(dirs)
+        remote_file_info_label = self.query_one("#remote_file_info", Label)
+        remote_file_info_label.update(
+            f"{num_files} files and {num_dirs} directories, Total size: {total_size} B"
+        )
 
 
 if __name__ == "__main__":
