@@ -104,6 +104,31 @@ class FileTuilla(App):
         for file_info in files:
             local_files_table.add_row(*map(str, file_info))
 
+    def update_remote_file_info_table(self) -> None:
+        paths = sftp_client.listdir(self.remote_site.value)
+        files = []
+        for path in paths:
+            full_remote_path = f"{remote_path}/{path}"
+            attrs = sftp_client.stat(full_remote_path)
+            mode = attrs.st_mode
+            if stat.S_ISREG(mode):
+                # path is a file
+                modified_time = datetime.fromtimestamp(attrs.st_mtime)
+                files.append(
+                    (
+                        path,
+                        attrs.st_size,
+                        Path(path).suffix,
+                        f"{modified_time:%Y-%m-%d %H:%M:%S}",
+                    )
+                )
+        remote_files_table = self.query_one("#remote_files_table", DataTable)
+        remote_files_table.clear()
+        for file_info in files:
+            remote_files_table.add_row(*map(str, file_info))
+
+
+
 
 if __name__ == "__main__":
     app = FileTuilla()
