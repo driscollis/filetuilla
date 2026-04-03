@@ -91,6 +91,8 @@ class FileTuilla(App):
         """
         local_path = Path(self.local_site.value)
         files = []
+        dirs = []
+        total_size = 0
         if local_path.exists():
             for path in local_path.iterdir():
                 if path.is_file():
@@ -103,10 +105,30 @@ class FileTuilla(App):
                             f"{modified_time:%Y-%m-%d %H:%M:%S}",
                         )
                     )
+                    total_size += path.stat().st_size
+                elif path.is_dir():
+                    dirs.append(path.name)
         local_files_table = self.query_one("#local_files_table", DataTable)
         local_files_table.clear()
         for file_info in files:
             local_files_table.add_row(*map(str, file_info))
+
+        # Update local file info label
+        self.update_local_file_info_label(files, dirs, total_size)
+
+    def update_local_file_info_label(
+        self, files: list, dirs: list, total_size: int
+    ) -> None:
+        """
+        Update the local file info label with the number of files/directories
+        and total size of the currently selected directory.
+        """
+        num_files = len(files)
+        num_dirs = len(dirs)
+        local_file_info_label = self.query_one("#local_file_info", Label)
+        local_file_info_label.update(
+            f"{num_files} files and {num_dirs} directories, Total size: {total_size} B"
+        )
 
     @on(DirectoryTree.DirectorySelected, "#remote_file_tree")
     def on_remote_file_tree_selected(
