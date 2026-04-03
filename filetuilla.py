@@ -56,9 +56,7 @@ class FileTuilla(App):
             ),
             RichLog(id="ftp_log"),
             Horizontal(self.local_site, self.remote_site, id="site_inputs"),
-            Horizontal(
-                local_tree, Tree("", id="remote_file_tree"), id="tree_row"
-            ),
+            Horizontal(local_tree, Tree("", id="remote_file_tree"), id="tree_row"),
             # File info data tables
             Horizontal(local_files_table, remote_files_table, id="file_tables"),
             # File info row (number of files/directories, total size)
@@ -149,8 +147,6 @@ class FileTuilla(App):
             remote_files_table.clear()
             for file_info in files:
                 remote_files_table.add_row(*map(str, file_info))
-
-
 
 
 if __name__ == "__main__":
