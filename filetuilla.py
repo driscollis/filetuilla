@@ -115,10 +115,10 @@ class FileTuilla(App):
         password = self.query_one("#password", Input).value
 
         if not host:
-            self.push_screen(WarningScreen("Host is required", cancel=False))
+            await self.push_screen(WarningScreen("Host is required", cancel=False))
             return
         if not username:
-            self.push_screen(WarningScreen("Username is required", cancel=False))
+            await self.push_screen(WarningScreen("Username is required", cancel=False))
             return
 
         await self._connect_ftp(host, port, username, password)
@@ -222,7 +222,6 @@ class FileTuilla(App):
         Update the remote file info table with the contents of the remote directory when a directory is selected.
         """
         selected_path = event.path
-        self.notify("Remote directory selected: %s" % selected_path)
         self.remote_site.value = selected_path
         self._load_remote_file_info()
 
