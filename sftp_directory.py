@@ -8,6 +8,7 @@ displays local filesystem directories.
 from __future__ import annotations
 
 import stat
+import threading
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
@@ -139,6 +140,7 @@ class SFTPDirectoryTree(Tree[SFTPDirEntry]):
             disabled: Whether the widget is disabled.
         """
         self.sftp_client = sftp_client
+        self._sftp_lock = threading.Lock()  # Protect concurrent SFTP access
         remote_path = self._normalize_path(path)
         super().__init__(
             self._label_for_path(remote_path),
@@ -228,6 +230,17 @@ class SFTPDirectoryTree(Tree[SFTPDirEntry]):
             sftp_client: The paramiko SFTP client to use.
         """
         self.sftp_client = sftp_client
+
+    def get_sftp_lock(self) -> threading.Lock:
+        """Get the lock used to synchronize SFTP operations.
+
+        Use this lock when making SFTP calls outside the tree widget
+        to prevent concurrent access issues.
+
+        Returns:
+            The threading.Lock instance.
+        """
+        return self._sftp_lock
 
     def set_root_path(self, path: str) -> None:
         """Set a new root path for the directory tree.
@@ -558,14 +571,16 @@ class SFTPDirectoryTree(Tree[SFTPDirEntry]):
         if self.sftp_client is None:
             return
         try:
-            for entry in self.sftp_client.listdir_attr(location):
+            with self._sftp_lock:
+                entries = list(self.sftp_client.listdir_attr(location))
+            for entry in entries:
                 if worker.is_cancelled:
                     break
                 entry_name = entry.filename
                 full_path = self._join_path(location, entry_name)
                 is_dir = stat.S_ISDIR(entry.st_mode)
                 yield SFTPPathInfo(full_path, entry_name, is_dir)
-        except OSError:
+        except (OSError, IOError, Exception):
             return
 
     @work(thread=True, exit_on_error=False)

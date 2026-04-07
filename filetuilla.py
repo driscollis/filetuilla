@@ -120,9 +120,6 @@ class FileTuilla(App):
         if not username:
             self.push_screen(WarningScreen("Username is required", cancel=False))
             return
-        if not password:
-            self.push_screen(WarningScreen("Password is required", cancel=False))
-            return
 
         await self._connect_ftp(host, port, username, password)
 
@@ -227,7 +224,7 @@ class FileTuilla(App):
         selected_path = event.path
         self.notify("Remote directory selected: %s" % selected_path)
         self.remote_site.value = selected_path
-        self.update_remote_file_info_table()
+        self._load_remote_file_info()
 
     def update_remote_directory_tree(self, dirs: list[str]) -> None:
         """
@@ -237,43 +234,66 @@ class FileTuilla(App):
             remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
             remote_tree.set_root_path(self.remote_site.value)
 
+    @work(thread=True, exclusive=True)
+    def _load_remote_file_info(self) -> None:
+        """Load remote file info in a background thread."""
+        if not self.ftp_client or self.remote_site.value == "":
+            return
+
+        remote_path = self.remote_site.value
+        remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
+        sftp_lock = remote_tree.get_sftp_lock()
+
+        try:
+            with sftp_lock:
+                paths = self.ftp_client.listdir(remote_path)
+                files = []
+                dirs = []
+                total_size = 0
+                for path in paths:
+                    full_remote_path = f"{remote_path}/{path}"
+                    attrs = self.ftp_client.stat(full_remote_path)
+                    mode = attrs.st_mode
+                    if stat.S_ISREG(mode):
+                        modified_time = datetime.fromtimestamp(attrs.st_mtime)
+                        files.append(
+                            (
+                                path,
+                                attrs.st_size,
+                                Path(path).suffix,
+                                f"{modified_time:%Y-%m-%d %H:%M:%S}",
+                            )
+                        )
+                        total_size += attrs.st_size
+                    elif stat.S_ISDIR(mode):
+                        dirs.append(path)
+
+            # Schedule UI updates on the main thread
+            self.call_from_thread(
+                self._update_remote_file_table_ui, files, dirs, total_size
+            )
+        except Exception as e:
+            self.call_from_thread(
+                self.notify, f"Error loading remote files: {e}", severity="error"
+            )
+
+    def _update_remote_file_table_ui(
+        self, files: list, dirs: list, total_size: int
+    ) -> None:
+        """Update the remote file table UI (must be called from main thread)."""
+        remote_files_table = self.query_one("#remote_files_table", DataTable)
+        remote_files_table.clear()
+        for file_info in files:
+            remote_files_table.add_row(*map(str, file_info))
+
+        # Update remote file info label
+        self.update_remote_file_info_label(files, dirs, total_size)
+
     def update_remote_file_info_table(self) -> None:
         """
         Update the remote file info table with the contents of the currently selected directory.
         """
-        if self.ftp_client and self.remote_site.value != "":
-            # TODO - need to test to see if this works for FTP too
-            # SFTP Implementation
-            paths = self.ftp_client.listdir(self.remote_site.value)
-            files = []
-            dirs = []
-            total_size = 0
-            for path in paths:
-                full_remote_path = f"{self.remote_site.value}/{path}"
-                attrs = self.ftp_client.stat(full_remote_path)
-                mode = attrs.st_mode
-                if stat.S_ISREG(mode):
-                    # path is a file
-                    modified_time = datetime.fromtimestamp(attrs.st_mtime)
-                    files.append(
-                        (
-                            path,
-                            attrs.st_size,
-                            Path(path).suffix,
-                            f"{modified_time:%Y-%m-%d %H:%M:%S}",
-                        )
-                    )
-                    total_size += attrs.st_size
-                elif stat.S_ISDIR(mode):
-                    dirs.append(path)
-            remote_files_table = self.query_one("#remote_files_table", DataTable)
-            remote_files_table.clear()
-            for file_info in files:
-                remote_files_table.add_row(*map(str, file_info))
-
-            self.update_remote_directory_tree(dirs)
-            # Update local file info label
-            self.update_remote_file_info_label(files, dirs, total_size)
+        self._load_remote_file_info()
 
     def update_remote_file_info_label(
         self, files: list, dirs: list, total_size: int
