@@ -4,14 +4,16 @@ import stat
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-from textual import on
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, DataTable, DirectoryTree, Header
-from textual.widgets import Input, Label, RichLog, Tree
+from textual.widgets import Input, Label, RichLog
 
 from screens.warning_screen import WarningScreen
+from sftp_directory import SFTPDirectoryTree
 
 
 class FileTuilla(App):
@@ -59,7 +61,9 @@ class FileTuilla(App):
             ),
             RichLog(id="ftp_log"),
             Horizontal(self.local_site, self.remote_site, id="site_inputs"),
-            Horizontal(local_tree, Tree("", id="remote_file_tree"), id="tree_row"),
+            Horizontal(
+                local_tree, SFTPDirectoryTree("/", id="remote_file_tree"), id="tree_row"
+            ),
             # File info data tables
             Horizontal(local_files_table, remote_files_table, id="file_tables"),
             # File info row (number of files/directories, total size)
@@ -98,7 +102,7 @@ class FileTuilla(App):
         self.query_one("#remote_file_actions").border_title = "Remote"
 
     @on(Button.Pressed, "#connect")
-    def on_connect(self, event: Button.Pressed) -> None:
+    async def on_connect(self, event: Button.Pressed) -> None:
         """
         Event handler for when the connect button is pressed.
 
@@ -106,7 +110,7 @@ class FileTuilla(App):
         """
         host = self.query_one("#host", Input).value
         port_number = self.query_one("#port", Input).value
-        port = int(port_number) if port_number else 21
+        port = int(port_number) if port_number else 22
         username = self.query_one("#username", Input).value
         password = self.query_one("#password", Input).value
 
@@ -120,19 +124,38 @@ class FileTuilla(App):
             self.push_screen(WarningScreen("Password is required", cancel=False))
             return
 
-        self._connect_ftp(host, port, username, password)
+        await self._connect_ftp(host, port, username, password)
 
-    def _connect_ftp(self, host: str, port: int, username: str, password: str) -> None:
+    @work(thread=True)
+    def _do_sftp_connect(
+        self, host: str, port: int, username: str, password: str
+    ) -> Any:
+        """Run blocking paramiko connection in a background thread."""
+        ssh_client = paramiko.SSHClient()
+        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh_client.connect(host, port, username, password)
+        return ssh_client.open_sftp()
+
+    async def _connect_ftp(
+        self, host: str, port: int, username: str, password: str
+    ) -> None:
         """
         Make connection to FTP/SFTP server.
         """
-        # TODO - check if SFTP
-        ssh_client = paramiko.SSHClient()
-        # TODO - add check for skipping missing host keys
-        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh_client.connect(host, port, username, password)
-        self.ftp_client = ssh_client.open_sftp()
-        self.update_remote_file_info_table()
+        try:
+            # Run blocking connection in a background thread
+            self.ftp_client = await self._do_sftp_connect(
+                host, port, username, password
+            ).wait()
+
+            # Set the SFTP client on the remote file tree and reload
+            remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
+            remote_tree.set_sftp_client(self.ftp_client)
+            await remote_tree.reload()
+
+            self.update_remote_file_info_table()
+        except Exception as e:
+            self.push_screen(WarningScreen(f"Connection failed: {e}", cancel=False))
 
     @on(DirectoryTree.DirectorySelected, "#local_file_tree")
     def on_local_file_tree_selected(
@@ -191,19 +214,16 @@ class FileTuilla(App):
             f"{num_files} files and {num_dirs} directories, Total size: {total_size} B"
         )
 
-    @on(Tree.NodeSelected, "#remote_file_tree")
+    @on(SFTPDirectoryTree.DirectorySelected, "#remote_file_tree")
     def on_remote_file_tree_selected(
-        self, event: DirectoryTree.DirectorySelected
+        self, event: SFTPDirectoryTree.DirectorySelected
     ) -> None:
         """
         Update the remote file info table with the contents of the remote directory when a directory is selected.
         """
-        selected_path = event.node.label
+        selected_path = event.path
         self.notify("Remote directory selected: %s" % selected_path)
-        if self.remote_site.value:
-            selected_path = f"{self.remote_site.value}/{selected_path}"
-        self.remote_site.value = selected_path  # type: ignore
-        return
+        self.remote_site.value = selected_path
         self.update_remote_file_info_table()
 
     def update_remote_directory_tree(self, dirs: list[str]) -> None:
@@ -211,12 +231,8 @@ class FileTuilla(App):
         Update the remote directory tree with the contents of the currently selected directory.
         """
         if self.remote_site.value:
-            remote_tree = self.query_one("#remote_file_tree", Tree)
-            remote_tree.clear()
-            remote_tree.root.label = self.remote_site.value
-            remote_tree.root.expand()
-            for dir in dirs:
-                remote_tree.root.add(dir)
+            remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
+            remote_tree.set_root_path(self.remote_site.value)
 
     def update_remote_file_info_table(self) -> None:
         """
