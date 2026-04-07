@@ -147,15 +147,18 @@ class FileTuilla(App):
             self.ftp_client = await self._do_sftp_connect(
                 host, port, username, password
             ).wait()
-
-            # Set the SFTP client on the remote file tree and reload
-            remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
-            remote_tree.set_sftp_client(self.ftp_client)
-            await remote_tree.reload()
-
-            self.update_remote_file_info_table()
         except Exception as e:
-            self.push_screen(WarningScreen(f"Connection failed: {e}", cancel=False))
+            await self.push_screen(
+                WarningScreen(f"Connection failed: {e}", cancel=False)
+            )
+            return
+
+        # Set the SFTP client on the remote file tree and reload
+        remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
+        remote_tree.set_sftp_client(self.ftp_client)
+        await remote_tree.reload()
+
+        self.update_remote_file_info_table()
 
     @on(DirectoryTree.DirectorySelected, "#local_file_tree")
     def on_local_file_tree_selected(
@@ -238,7 +241,7 @@ class FileTuilla(App):
         """
         Update the remote file info table with the contents of the currently selected directory.
         """
-        if self.ftp_client:
+        if self.ftp_client and self.remote_site.value != "":
             # TODO - need to test to see if this works for FTP too
             # SFTP Implementation
             paths = self.ftp_client.listdir(self.remote_site.value)
