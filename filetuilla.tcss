@@ -32,14 +32,19 @@ FileTuilla {
         }
     }
 
+    #tree_row {
+        height: 1fr;
+        min-height: 10;
+    }
+
     #remote_file_tree {
         border: round yellow;
-        height: auto;
         width: 50%;
     }
 
     #local_file_tree {
        border: round yellow;
+       width: 50%;
     }
 
     #file_tables {
