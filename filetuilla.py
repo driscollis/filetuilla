@@ -1,3 +1,4 @@
+import os
 import paramiko
 import platform
 import stat
@@ -22,6 +23,7 @@ class FileTuilla(App):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.ftp_client = None
+        self.local_file_selected = Path("BAD_PATH")
 
     def compose(self) -> ComposeResult:
         columns = ("Filename", "Filesize", "Filetype", "Last modified")
@@ -44,7 +46,7 @@ class FileTuilla(App):
 
         local_tree = DirectoryTree("/", id="local_file_tree")
 
-        local_files_table = DataTable(id="local_files_table")
+        local_files_table = DataTable(id="local_files_table", cursor_type="row")
         local_files_table.add_columns(*columns)
         remote_files_table = DataTable(id="remote_files_table")
         remote_files_table.add_columns(*columns)
@@ -306,6 +308,46 @@ class FileTuilla(App):
         remote_file_info_label.update(
             f"{num_files} files and {num_dirs} directories, Total size: {total_size} B"
         )
+
+    @on(DataTable.RowHighlighted, "#local_files_table")
+    @on(DataTable.RowSelected, "#local_files_table")
+    def on_local_row_selected(self, event: DataTable.RowSelected) -> None:
+        """
+        Set the locally selected file when a row is selected (Enter pressed).
+        """
+        parent_path = Path(self.local_site.value)
+        table: DataTable = event.data_table
+        selected_row = table.get_row(event.row_key)
+        self.local_file_selected = parent_path / selected_row[0]
+
+    # ----------- Local button event handlers -----------
+    @on(Button.Pressed, "#local_delete")
+    def on_local_delete(self, event: Button.Pressed) -> None:
+        """
+        Event handler for local delete button
+
+        Deletes the selected file - Warns user before deleting
+        """
+        if self.local_file_selected:
+            self.push_screen(  # type: ignore
+                WarningScreen(
+                    f"Do you really want to delete {self.local_file_selected}?"
+                ),
+                self._delete_local_file,
+            )
+
+    def _delete_local_file(self, should_delete: bool) -> None:
+        """
+        Delete the local file
+        """
+        log = self.query_one("#ftp_log", RichLog)
+        if should_delete and self.local_file_selected.exists():
+            try:
+                os.remove(self.local_file_selected)
+            except FileNotFoundError:
+                log.write(f"File not found: {self.local_file_selected}")
+            except OSError as e:
+                log.write(f"Unable to delete file {self.local_file_selected}: {e}")
 
 
 if __name__ == "__main__":
