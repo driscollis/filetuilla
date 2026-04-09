@@ -344,6 +344,9 @@ class FileTuilla(App):
         if should_delete and self.local_file_selected.exists():
             try:
                 os.remove(self.local_file_selected)
+                log.write(f"Deleted {self.local_file_selected} successfully!")
+                local_tree = self.query_one("#local_file_tree", DirectoryTree)
+                local_tree.reload()
             except FileNotFoundError:
                 log.write(f"File not found: {self.local_file_selected}")
             except OSError as e:
