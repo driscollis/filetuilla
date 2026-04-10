@@ -110,3 +110,19 @@ def create_local_folder(app: "FileTuilla", folder_name: str | bool = False) -> N
                     style="bright_red",
                 )
             )
+
+
+def log(app: "FileTuilla", log_type: str, message: str) -> None:
+    log = app.query_one("#ftp_log", RichLog)
+    if log_type == "info":
+        style = ""
+    elif log_type == "success":
+        style = "green4"
+    elif log_type == "error":
+        style = "bright_red"
+    else:
+        style = ""
+
+    log.write(
+        Text(message, style=style),
+    )
