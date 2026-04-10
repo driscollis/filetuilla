@@ -84,11 +84,10 @@ class FileTuilla(App):
                     id="local_file_actions",
                 ),
                 Horizontal(
-                    Button("Download", id="download", variant="primary"),
+                    Button("Download", id="download", variant="success"),
                     Button("Delete", id="remote_delete", variant="error"),
                     Button("Rename", id="remote_rename", variant="primary"),
                     Button("New Folder", id="remote_new_folder", variant="primary"),
-                    Button("Up Dir", id="up_dir", variant="success"),
                     id="remote_file_actions",
                 ),
                 id="file_action_controls_row",
@@ -335,6 +334,8 @@ class FileTuilla(App):
                 ),
                 self._delete_local_file,
             )
+        else:
+            self.push_screen(WarningScreen("No file selected", cancel=False))
 
     def _delete_local_file(self, should_delete: bool) -> None:
         """
@@ -347,6 +348,7 @@ class FileTuilla(App):
                 log.write(f"Deleted {self.local_file_selected} successfully!")
                 local_tree = self.query_one("#local_file_tree", DirectoryTree)
                 local_tree.reload()
+                self.update_local_file_info_table()
             except FileNotFoundError:
                 log.write(f"File not found: {self.local_file_selected}")
             except OSError as e:
