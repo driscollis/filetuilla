@@ -326,16 +326,17 @@ class FileTuilla(App):
         selected_row = table.get_row(event.row_key)
         self.local_file_selected = parent_path / selected_row[0]
 
-    @on(DataTable.RowHighlighted, "#remote_files_table")
-    @on(DataTable.RowSelected, "#remote_files_table")
-    def on_remote_files_table_selected(self, event: DataTable.RowSelected) -> None:
+    @on(SFTPDirectoryTree.DirectorySelected)
+    def on_remote_files_table_selected(
+        self, event: SFTPDirectoryTree.DirectorySelected
+    ) -> None:
         """
         Set the remote selected file when a row is selected (Enter pressed).
         """
-        parent_path = Path(self.remote_site.value)
-        table: DataTable = event.data_table
-        selected_row = table.get_row(event.row_key)
-        self.remote_file_selected = f"{parent_path}/{selected_row[0]}"
+        parent_path = event.path
+
+        if self.local_file_selected.exists():
+            self.remote_file_selected = f"{parent_path}/{self.local_file_selected.name}"
 
     # ----------- Local button event handlers -----------
     @on(Button.Pressed, "#local_delete")
@@ -404,6 +405,7 @@ class FileTuilla(App):
 
         Uploads a file to the server
         """
+        # TODO - Verify with user if they want to upload
         self.upload()
 
     @work(exclusive=True, thread=True, group="upload")
@@ -422,14 +424,20 @@ class FileTuilla(App):
                     if not worker.is_cancelled:
                         self.call_from_thread(
                             log,
+                            self,
+                            "success",
                             f"Successfully uploaded {self.local_file_selected} to {self.remote_file_selected} "
                             "on remote server",
-                            "success",
                         )
                         self.call_from_thread(self.update_remote_ui)
         except Exception as e:
             if not worker.is_cancelled:
-                self.call_from_thread(log, f"Error loading remote files: {e}", "error")
+                self.call_from_thread(
+                    log,
+                    self,
+                    "error",
+                    f"Error uploading remote file {self.remote_file_selected}: {e}",
+                )
 
     def update_remote_ui(self):
         """
