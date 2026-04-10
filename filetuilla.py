@@ -13,6 +13,7 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, DataTable, DirectoryTree, Header
 from textual.widgets import Input, Label, RichLog
 
+from screens.rename_screen import RenameScreen
 from screens.warning_screen import WarningScreen
 from sftp_directory import SFTPDirectoryTree
 
@@ -353,6 +354,37 @@ class FileTuilla(App):
                 log.write(f"File not found: {self.local_file_selected}")
             except OSError as e:
                 log.write(f"Unable to delete file {self.local_file_selected}: {e}")
+
+    @on(Button.Pressed, "#local_rename")
+    def on_local_rename(self, event: Button.Pressed) -> None:
+        """
+        Event handler for local rename button
+        """
+        if self.local_file_selected:
+            self.push_screen(  # type: ignore
+                RenameScreen(self.local_file_selected), self._rename_local_file
+            )
+        else:
+            self.push_screen(WarningScreen("No file selected", cancel=False))
+
+    def _rename_local_file(self, new_name: Path | bool = False) -> None:
+        """
+        Rename the local file
+        """
+        log = self.query_one("#ftp_log", RichLog)
+        if isinstance(new_name, Path) and self.local_file_selected.exists():
+            old_path = self.local_file_selected
+            new_path = self.local_file_selected.parent / new_name
+            try:
+                self.local_file_selected.rename(new_path)
+                log.write(f"Renamed {old_path} to {new_path} successfully!")
+                local_tree = self.query_one("#local_file_tree", DirectoryTree)
+                local_tree.reload()
+                self.update_local_file_info_table()
+            except FileNotFoundError:
+                log.write(f"File not found: {self.local_file_selected}")
+            except OSError as e:
+                log.write(f"Unable to rename file {self.local_file_selected}: {e}")
 
 
 if __name__ == "__main__":
