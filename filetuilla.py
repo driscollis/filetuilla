@@ -10,6 +10,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, DataTable, DirectoryTree, Header
 from textual.widgets import Input, Label, RichLog
+from textual.worker import get_current_worker
 
 from file_utilities import _delete_local_file, _rename_local_file, create_local_folder
 from file_utilities import log
@@ -240,6 +241,7 @@ class FileTuilla(App):
     @work(thread=True, exclusive=True, group="load_remote_file_info")
     def _load_remote_file_info(self) -> None:
         """Load remote file info in a background thread."""
+        worker = get_current_worker()
         if not self.ftp_client or self.remote_site.value == "":
             return
 
@@ -272,13 +274,15 @@ class FileTuilla(App):
                         dirs.append(path)
 
             # Schedule UI updates on the main thread
-            self.call_from_thread(
-                self._update_remote_file_table_ui, files, dirs, total_size
-            )
+            if not worker.is_cancelled:
+                self.call_from_thread(
+                    self._update_remote_file_table_ui, files, dirs, total_size
+                )
         except Exception as e:
-            self.call_from_thread(
-                self.notify, f"Error loading remote files: {e}", severity="error"
-            )
+            if not worker.is_cancelled:
+                self.call_from_thread(
+                    self.notify, f"Error loading remote files: {e}", severity="error"
+                )
 
     def _update_remote_file_table_ui(
         self, files: list, dirs: list, total_size: int
@@ -404,6 +408,7 @@ class FileTuilla(App):
 
     @work(exclusive=True, thread=True, group="upload")
     def upload(self) -> None:
+        worker = get_current_worker()
         remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
 
         # TODO - Need do differentiate between FTP and SFTP here or make the interface the same
@@ -414,15 +419,26 @@ class FileTuilla(App):
                     self.ftp_client.put(
                         self.local_file_selected, self.remote_file_selected
                     )
-                    self.call_from_thread(
-                        log,
-                        f"Successfully uploaded {self.local_file_selected} to {self.remote_file_selected} "
-                        "on remote server",
-                        "success",
-                    )
-                    # TODO - Update tree and data table if successful
+                    if not worker.is_cancelled:
+                        self.call_from_thread(
+                            log,
+                            f"Successfully uploaded {self.local_file_selected} to {self.remote_file_selected} "
+                            "on remote server",
+                            "success",
+                        )
+                        self.call_from_thread(self.update_remote_ui)
         except Exception as e:
-            self.call_from_thread(log, f"Error loading remote files: {e}", "error")
+            if not worker.is_cancelled:
+                self.call_from_thread(log, f"Error loading remote files: {e}", "error")
+
+    def update_remote_ui(self):
+        """
+        Update the remote tree and remote table UI after a file operation that changes
+        the remote directory contents (upload, delete, rename, new folder)
+        """
+        remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
+        remote_tree.reload()
+        self.update_remote_file_info_table()
 
 
 if __name__ == "__main__":
