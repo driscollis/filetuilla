@@ -70,3 +70,29 @@ FileTuilla {
     }
 
 }
+
+WarningScreen {
+
+    align: center middle;
+    background: $primary 30%;
+
+    #warning_screen{
+        width: 50%;
+        height: 11;
+        border: thick $background 70%;
+    }
+
+    Label {
+        height: auto;
+        width: auto;
+    }
+
+    Horizontal {
+        height: auto;
+        align: center middle;
+    }
+
+    #warning-buttons {
+        align: center middle;
+    }
+}

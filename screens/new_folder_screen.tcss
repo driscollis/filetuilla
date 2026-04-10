@@ -1,0 +1,20 @@
+NewFolderScreen {
+    align: center middle;
+    background: $primary 30%;
+
+    #new_local_folder_screen_vlayout {
+        width: 50%;
+        height: 30%;
+        border: thick $background 70%;
+    }
+
+    Input {
+        width: 100%;
+        height: 3;
+    }
+
+    Horizontal {
+        height: auto;
+        align: center middle;
+    }
+}

@@ -1,3 +1,4 @@
+import os
 import paramiko
 import platform
 import stat
@@ -6,12 +7,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, DataTable, DirectoryTree, Header
 from textual.widgets import Input, Label, RichLog
 
+from screens.new_folder_screen import NewFolderScreen
+from screens.rename_screen import RenameScreen
 from screens.warning_screen import WarningScreen
 from sftp_directory import SFTPDirectoryTree
 
@@ -22,6 +26,7 @@ class FileTuilla(App):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.ftp_client = None
+        self.local_file_selected = Path("BAD_PATH")
 
     def compose(self) -> ComposeResult:
         columns = ("Filename", "Filesize", "Filetype", "Last modified")
@@ -44,7 +49,7 @@ class FileTuilla(App):
 
         local_tree = DirectoryTree("/", id="local_file_tree")
 
-        local_files_table = DataTable(id="local_files_table")
+        local_files_table = DataTable(id="local_files_table", cursor_type="row")
         local_files_table.add_columns(*columns)
         remote_files_table = DataTable(id="remote_files_table")
         remote_files_table.add_columns(*columns)
@@ -82,11 +87,10 @@ class FileTuilla(App):
                     id="local_file_actions",
                 ),
                 Horizontal(
-                    Button("Download", id="download", variant="primary"),
+                    Button("Download", id="download", variant="success"),
                     Button("Delete", id="remote_delete", variant="error"),
                     Button("Rename", id="remote_rename", variant="primary"),
                     Button("New Folder", id="remote_new_folder", variant="primary"),
-                    Button("Up Dir", id="up_dir", variant="success"),
                     id="remote_file_actions",
                 ),
                 id="file_action_controls_row",
@@ -306,6 +310,159 @@ class FileTuilla(App):
         remote_file_info_label.update(
             f"{num_files} files and {num_dirs} directories, Total size: {total_size} B"
         )
+
+    @on(DataTable.RowHighlighted, "#local_files_table")
+    @on(DataTable.RowSelected, "#local_files_table")
+    def on_local_row_selected(self, event: DataTable.RowSelected) -> None:
+        """
+        Set the locally selected file when a row is selected (Enter pressed).
+        """
+        parent_path = Path(self.local_site.value)
+        table: DataTable = event.data_table
+        selected_row = table.get_row(event.row_key)
+        self.local_file_selected = parent_path / selected_row[0]
+
+    # ----------- Local button event handlers -----------
+    @on(Button.Pressed, "#local_delete")
+    def on_local_delete(self, event: Button.Pressed) -> None:
+        """
+        Event handler for local delete button
+
+        Deletes the selected file - Warns user before deleting
+        """
+        if self.local_file_selected:
+            self.push_screen(  # type: ignore
+                WarningScreen(
+                    f"Do you really want to delete {self.local_file_selected}?"
+                ),
+                self._delete_local_file,
+            )
+        else:
+            self.push_screen(WarningScreen("No file selected", cancel=False))
+
+    def _delete_local_file(self, should_delete: bool) -> None:
+        """
+        Delete the local file
+        """
+        log = self.query_one("#ftp_log", RichLog)
+        if should_delete and self.local_file_selected.exists():
+            try:
+                os.remove(self.local_file_selected)
+                log.write(
+                    Text(
+                        f"Deleted {self.local_file_selected} successfully!",
+                        style="green4",
+                    )
+                )
+                local_tree = self.query_one("#local_file_tree", DirectoryTree)
+                local_tree.reload()
+                self.update_local_file_info_table()
+            except FileNotFoundError:
+                log.write(
+                    Text(
+                        f"File not found: {self.local_file_selected}",
+                        style="bright_red",
+                    )
+                )
+            except OSError as e:
+                log.write(
+                    Text(
+                        f"Unable to delete file {self.local_file_selected}: {e}",
+                        style="bright_red",
+                    )
+                )
+
+    @on(Button.Pressed, "#local_rename")
+    def on_local_rename(self, event: Button.Pressed) -> None:
+        """
+        Event handler for local rename button
+        """
+        if self.local_file_selected:
+            full_local_path = Path(self.local_site.value) / self.local_file_selected
+            self.push_screen(  # type: ignore
+                RenameScreen(full_local_path), self._rename_local_file
+            )
+        else:
+            self.push_screen(WarningScreen("No file selected", cancel=False))
+
+    def _rename_local_file(self, new_name: Path | bool = False) -> None:
+        """
+        Rename the currently selected local file (if any)
+        """
+        log = self.query_one("#ftp_log", RichLog)
+        if isinstance(new_name, Path) and self.local_file_selected.exists():
+            old_path = self.local_file_selected
+            new_path = self.local_file_selected.parent / new_name
+            try:
+                self.local_file_selected.rename(new_path)
+                log.write(
+                    Text(
+                        f"Renamed {old_path} to {new_path} successfully!",
+                        style="green4",
+                    )
+                )
+                local_tree = self.query_one("#local_file_tree", DirectoryTree)
+                local_tree.reload()
+                self.update_local_file_info_table()
+            except FileNotFoundError:
+                log.write(
+                    Text(
+                        f"File not found: {self.local_file_selected}",
+                        style="bright_red",
+                    )
+                )
+            except OSError as e:
+                log.write(
+                    Text(
+                        f"Unable to rename file {self.local_file_selected}: {e}",
+                        style="bright_red",
+                    )
+                )
+
+    @on(Button.Pressed, "#local_new_folder")
+    def on_local_new_folder(self, event: Button.Pressed) -> None:
+        """
+        Event handler for the local new folder button
+
+        Creates a new folder on the local machine
+        """
+        local_path = Path(self.local_site.value)
+        self.push_screen(  # type: ignore
+            NewFolderScreen(local_path), self.create_local_folder
+        )
+
+    def create_local_folder(self, folder_name: str | bool = False) -> None:
+        """
+        Create a new folder on the local machine with the given name
+        """
+        log = self.query_one("#ftp_log", RichLog)
+        if isinstance(folder_name, Path):
+            new_folder_path = Path(self.local_site.value) / folder_name
+            try:
+                new_folder_path.mkdir()
+                log.write(
+                    Text(
+                        f"Created new folder {new_folder_path} successfully!",
+                        style="green4",
+                    )
+                )
+                local_tree = self.query_one("#local_file_tree", DirectoryTree)
+                local_tree.reload()
+                self.update_local_file_info_table()
+            except FileExistsError:
+                log.write(
+                    Text(
+                        f"Folder already exists: {new_folder_path}",
+                        style="bright_red",
+                    )
+                )
+            except OSError as e:
+                log.write(
+                    Text(
+                        f"Unable to create folder {new_folder_path}: {e}",
+                        style="bright_red",
+                    )
+                )
 
 
 if __name__ == "__main__":
