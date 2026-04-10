@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
@@ -346,14 +347,29 @@ class FileTuilla(App):
         if should_delete and self.local_file_selected.exists():
             try:
                 os.remove(self.local_file_selected)
-                log.write(f"Deleted {self.local_file_selected} successfully!")
+                log.write(
+                    Text(
+                        f"Deleted {self.local_file_selected} successfully!",
+                        style="green4",
+                    )
+                )
                 local_tree = self.query_one("#local_file_tree", DirectoryTree)
                 local_tree.reload()
                 self.update_local_file_info_table()
             except FileNotFoundError:
-                log.write(f"File not found: {self.local_file_selected}")
+                log.write(
+                    Text(
+                        f"File not found: {self.local_file_selected}",
+                        style="bright_red",
+                    )
+                )
             except OSError as e:
-                log.write(f"Unable to delete file {self.local_file_selected}: {e}")
+                log.write(
+                    Text(
+                        f"Unable to delete file {self.local_file_selected}: {e}",
+                        style="bright_red",
+                    )
+                )
 
     @on(Button.Pressed, "#local_rename")
     def on_local_rename(self, event: Button.Pressed) -> None:
@@ -361,8 +377,9 @@ class FileTuilla(App):
         Event handler for local rename button
         """
         if self.local_file_selected:
+            full_local_path = Path(self.local_site.value) / self.local_file_selected
             self.push_screen(  # type: ignore
-                RenameScreen(self.local_file_selected), self._rename_local_file
+                RenameScreen(full_local_path), self._rename_local_file
             )
         else:
             self.push_screen(WarningScreen("No file selected", cancel=False))
@@ -377,14 +394,29 @@ class FileTuilla(App):
             new_path = self.local_file_selected.parent / new_name
             try:
                 self.local_file_selected.rename(new_path)
-                log.write(f"Renamed {old_path} to {new_path} successfully!")
+                log.write(
+                    Text(
+                        f"Renamed {old_path} to {new_path} successfully!",
+                        style="green4",
+                    )
+                )
                 local_tree = self.query_one("#local_file_tree", DirectoryTree)
                 local_tree.reload()
                 self.update_local_file_info_table()
             except FileNotFoundError:
-                log.write(f"File not found: {self.local_file_selected}")
+                log.write(
+                    Text(
+                        f"File not found: {self.local_file_selected}",
+                        style="bright_red",
+                    )
+                )
             except OSError as e:
-                log.write(f"Unable to rename file {self.local_file_selected}: {e}")
+                log.write(
+                    Text(
+                        f"Unable to rename file {self.local_file_selected}: {e}",
+                        style="bright_red",
+                    )
+                )
 
 
 if __name__ == "__main__":
