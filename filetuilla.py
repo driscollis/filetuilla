@@ -2,17 +2,20 @@ import paramiko
 import platform
 import stat
 
+import sftp_utils
+
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, DataTable, DirectoryTree, Header
 from textual.widgets import Input, Label, RichLog
+from textual.worker import get_current_worker
 
 from file_utilities import _delete_local_file, _rename_local_file, create_local_folder
+from file_utilities import log
 from screens.new_folder_screen import NewFolderScreen
 from screens.rename_screen import RenameScreen
 from screens.warning_screen import WarningScreen
@@ -24,8 +27,10 @@ class FileTuilla(App):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.ftp_client = None
+        self.ftp_client: paramiko.sftp_client.SFTPClient | None = None
         self.local_file_selected = Path("BAD_PATH")
+        self.remote_file_selected: str | None = None
+        self.remote_folder_selected: str | None = None
 
     def compose(self) -> ComposeResult:
         columns = ("Filename", "Filesize", "Filetype", "Last modified")
@@ -126,10 +131,10 @@ class FileTuilla(App):
 
         await self._connect_ftp(host, port, username, password)
 
-    @work(thread=True)
+    @work(thread=True, group="sftp_connect")
     def _do_sftp_connect(
         self, host: str, port: int, username: str, password: str
-    ) -> Any:
+    ) -> paramiko.sftp_client.SFTPClient:
         """Run blocking paramiko connection in a background thread."""
         ssh_client = paramiko.SSHClient()
         ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -160,6 +165,7 @@ class FileTuilla(App):
 
         self.update_remote_file_info_table()
 
+    @on(DirectoryTree.FileSelected, "#local_file_tree")
     @on(DirectoryTree.DirectorySelected, "#local_file_tree")
     def on_local_file_tree_selected(
         self, event: DirectoryTree.DirectorySelected
@@ -167,10 +173,11 @@ class FileTuilla(App):
         """
         Update the local file info table with the contents of the local directory when a directory is selected.
         """
-        selected_path = event.path
-        if str(selected_path) != "":
-            self.local_site.value = str(selected_path)
-            self.update_local_file_info_table()
+        self.local_file_selected = Path(event.path)
+        if str(self.local_file_selected) != "":
+            self.local_site.value = str(self.local_file_selected)
+            if self.local_file_selected.is_dir():
+                self.update_local_file_info_table()
 
     def update_local_file_info_table(self) -> None:
         """
@@ -217,15 +224,26 @@ class FileTuilla(App):
             f"{num_files} files and {num_dirs} directories, Total size: {total_size} B"
         )
 
+    @on(SFTPDirectoryTree.FileSelected, "#remote_file_tree")
+    def on_remote_file_selected(self, event: SFTPDirectoryTree.FileSelected) -> None:
+        """
+        Event handler for when a file is selected in the remote directory tree.
+        """
+        self.remote_file_selected = event.path
+        self.remote_site.value = self.remote_file_selected
+
     @on(SFTPDirectoryTree.DirectorySelected, "#remote_file_tree")
     def on_remote_file_tree_selected(
-        self, event: SFTPDirectoryTree.DirectorySelected
+        self,
+        event: SFTPDirectoryTree.DirectorySelected | SFTPDirectoryTree.FileSelected,
     ) -> None:
         """
+        Event handler for when a directory is selected in the remote directory tree.
+
         Update the remote file info table with the contents of the remote directory when a directory is selected.
         """
-        selected_path = event.path
-        self.remote_site.value = selected_path
+        self.remote_folder_selected = event.path
+        self.remote_site.value = self.remote_folder_selected
         self._load_remote_file_info()
 
     def update_remote_directory_tree(self, dirs: list[str]) -> None:
@@ -236,9 +254,10 @@ class FileTuilla(App):
             remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
             remote_tree.set_root_path(self.remote_site.value)
 
-    @work(thread=True, exclusive=True)
+    @work(thread=True, exclusive=True, group="load_remote_file_info")
     def _load_remote_file_info(self) -> None:
         """Load remote file info in a background thread."""
+        worker = get_current_worker()
         if not self.ftp_client or self.remote_site.value == "":
             return
 
@@ -271,13 +290,15 @@ class FileTuilla(App):
                         dirs.append(path)
 
             # Schedule UI updates on the main thread
-            self.call_from_thread(
-                self._update_remote_file_table_ui, files, dirs, total_size
-            )
+            if not worker.is_cancelled:
+                self.call_from_thread(
+                    self._update_remote_file_table_ui, files, dirs, total_size
+                )
         except Exception as e:
-            self.call_from_thread(
-                self.notify, f"Error loading remote files: {e}", severity="error"
-            )
+            if not worker.is_cancelled:
+                self.call_from_thread(
+                    self.notify, f"Error loading remote files: {e}", severity="error"
+                )
 
     def _update_remote_file_table_ui(
         self, files: list, dirs: list, total_size: int
@@ -310,17 +331,6 @@ class FileTuilla(App):
             f"{num_files} files and {num_dirs} directories, Total size: {total_size} B"
         )
 
-    @on(DataTable.RowHighlighted, "#local_files_table")
-    @on(DataTable.RowSelected, "#local_files_table")
-    def on_local_row_selected(self, event: DataTable.RowSelected) -> None:
-        """
-        Set the locally selected file when a row is selected (Enter pressed).
-        """
-        parent_path = Path(self.local_site.value)
-        table: DataTable = event.data_table
-        selected_row = table.get_row(event.row_key)
-        self.local_file_selected = parent_path / selected_row[0]
-
     # ----------- Local button event handlers -----------
     @on(Button.Pressed, "#local_delete")
     def on_local_delete(self, event: Button.Pressed) -> None:
@@ -351,9 +361,8 @@ class FileTuilla(App):
         Event handler for local rename button
         """
         if self.local_file_selected:
-            full_local_path = Path(self.local_site.value) / self.local_file_selected
             self.push_screen(  # type: ignore
-                RenameScreen(full_local_path), self._rename_local_file
+                RenameScreen(self.local_file_selected), self._rename_local_file
             )
         else:
             self.push_screen(WarningScreen("No file selected", cancel=False))
@@ -381,6 +390,63 @@ class FileTuilla(App):
         Create a new folder on the local machine with the given name
         """
         create_local_folder(self, folder_name)
+
+    @on(Button.Pressed, "#upload")
+    def on_upload(self, event: Button.Pressed) -> None:
+        """
+        Event handler for upload button
+
+        Uploads a file to the server
+        """
+        # TODO - Verify with user if they want to upload
+        if self.ftp_client is not None:
+            self.upload()
+        else:
+            self.push_screen(WarningScreen("You are not connected!", cancel=False))
+
+    @work(exclusive=True, thread=True, group="upload")
+    def upload(self) -> None:
+        worker = get_current_worker()
+        remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
+
+        # TODO - Need do differentiate between FTP and SFTP here or make the interface the same
+        sftp_lock = remote_tree.get_sftp_lock()
+
+        try:
+            with sftp_lock:
+                if self.ftp_client is not None:
+                    if self.local_file_selected.is_file():
+                        # Upload a file
+                        upload_path = f"{self.remote_folder_selected}/{self.local_file_selected.name}"
+                        sftp_utils.upload_file(
+                            self.local_file_selected, upload_path, self.ftp_client
+                        )
+                        if not worker.is_cancelled:
+                            self.call_from_thread(
+                                log,
+                                self,
+                                "success",
+                                f"Successfully uploaded {self.local_file_selected} to {self.remote_file_selected} "
+                                "on remote server",
+                            )
+                            self.call_from_thread(self.update_remote_ui)
+        except Exception as e:
+            if not worker.is_cancelled:
+                self.call_from_thread(
+                    log,
+                    self,
+                    "error",
+                    f"Error uploading remote file {self.remote_file_selected}: {e}",
+                )
+
+    def update_remote_ui(self):
+        """
+        Update the remote tree and remote table UI after a file operation that changes
+        the remote directory contents (upload, delete, rename, new folder)
+        """
+        remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
+        remote_tree.reload()
+        self.update_remote_file_info_table()
 
 
 if __name__ == "__main__":
