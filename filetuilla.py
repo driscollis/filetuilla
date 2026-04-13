@@ -28,6 +28,7 @@ class FileTuilla(App):
         self.ftp_client: paramiko.sftp_client.SFTPClient | None = None
         self.local_file_selected = Path("BAD_PATH")
         self.remote_file_selected: str | None = None
+        self.remote_folder_selected: str | None = None
 
     def compose(self) -> ComposeResult:
         columns = ("Filename", "Filesize", "Filetype", "Last modified")
@@ -222,16 +223,25 @@ class FileTuilla(App):
         )
 
     @on(SFTPDirectoryTree.FileSelected, "#remote_file_tree")
+    def on_remote_file_selected(self, event: SFTPDirectoryTree.FileSelected) -> None:
+        """
+        Event handler for when a file is selected in the remote directory tree.
+        """
+        self.remote_file_selected = event.path
+        self.remote_site.value = self.remote_file_selected
+
     @on(SFTPDirectoryTree.DirectorySelected, "#remote_file_tree")
     def on_remote_file_tree_selected(
         self,
         event: SFTPDirectoryTree.DirectorySelected | SFTPDirectoryTree.FileSelected,
     ) -> None:
         """
+        Event handler for when a directory is selected in the remote directory tree.
+
         Update the remote file info table with the contents of the remote directory when a directory is selected.
         """
-        self.remote_file_selected = event.path
-        self.remote_site.value = self.remote_file_selected
+        self.remote_folder_selected = event.path
+        self.remote_site.value = self.remote_folder_selected
         self._load_remote_file_info()
 
     def update_remote_directory_tree(self, dirs: list[str]) -> None:
@@ -399,12 +409,15 @@ class FileTuilla(App):
 
         # TODO - Need do differentiate between FTP and SFTP here or make the interface the same
         sftp_lock = remote_tree.get_sftp_lock()
+
         try:
             with sftp_lock:
-                if self.ftp_client is not None:
-                    self.ftp_client.put(
-                        self.local_file_selected, self.remote_file_selected
+                if self.ftp_client is not None and self.local_file_selected.is_file():
+                    # Upload a file
+                    upload_path = (
+                        f"{self.remote_folder_selected}/{self.local_file_selected.name}"
                     )
+                    self.ftp_client.put(self.local_file_selected, upload_path)
                     if not worker.is_cancelled:
                         self.call_from_thread(
                             log,
