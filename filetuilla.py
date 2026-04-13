@@ -2,6 +2,8 @@ import paramiko
 import platform
 import stat
 
+import sftp_utils
+
 from datetime import datetime
 from pathlib import Path
 
@@ -412,21 +414,22 @@ class FileTuilla(App):
 
         try:
             with sftp_lock:
-                if self.ftp_client is not None and self.local_file_selected.is_file():
-                    # Upload a file
-                    upload_path = (
-                        f"{self.remote_folder_selected}/{self.local_file_selected.name}"
-                    )
-                    self.ftp_client.put(self.local_file_selected, upload_path)
-                    if not worker.is_cancelled:
-                        self.call_from_thread(
-                            log,
-                            self,
-                            "success",
-                            f"Successfully uploaded {self.local_file_selected} to {self.remote_file_selected} "
-                            "on remote server",
+                if self.ftp_client is not None:
+                    if self.local_file_selected.is_file():
+                        # Upload a file
+                        upload_path = f"{self.remote_folder_selected}/{self.local_file_selected.name}"
+                        sftp_utils.upload_file(
+                            self.local_file_selected, upload_path, self.ftp_client
                         )
-                        self.call_from_thread(self.update_remote_ui)
+                        if not worker.is_cancelled:
+                            self.call_from_thread(
+                                log,
+                                self,
+                                "success",
+                                f"Successfully uploaded {self.local_file_selected} to {self.remote_file_selected} "
+                                "on remote server",
+                            )
+                            self.call_from_thread(self.update_remote_ui)
         except Exception as e:
             if not worker.is_cancelled:
                 self.call_from_thread(
