@@ -448,6 +448,37 @@ class FileTuilla(App):
         remote_tree.reload()
         self.update_remote_file_info_table()
 
+    @on(Button.Pressed, "#download")
+    def on_download(self, event: Button.Pressed) -> None:
+        """
+        Event handler for download button
+
+        Downloads a file from the server
+        """
+        worker = get_current_worker()
+        remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
+
+        sftp_lock = remote_tree.get_sftp_lock()
+        # TODO - Verify with user if they want to download
+        try:
+            with sftp_lock:
+                if self.ftp_client is not None:
+                    # Check if the remote item is a file or a folder
+
+                    log(self, "info", "Download functionality not implemented yet")
+                else:
+                    self.push_screen(
+                        WarningScreen("You are not connected!", cancel=False)
+                    )
+        except Exception as e:
+            if not worker.is_cancelled:
+                self.call_from_thread(
+                    log,
+                    self,
+                    "error",
+                    f"Error downloading remote file {self.remote_file_selected}: {e}",
+                )
+
 
 if __name__ == "__main__":
     app = FileTuilla()
