@@ -162,6 +162,7 @@ class FileTuilla(App):
 
         self.update_remote_file_info_table()
 
+    @on(DirectoryTree.FileSelected, "#local_file_tree")
     @on(DirectoryTree.DirectorySelected, "#local_file_tree")
     def on_local_file_tree_selected(
         self, event: DirectoryTree.DirectorySelected
@@ -169,10 +170,11 @@ class FileTuilla(App):
         """
         Update the local file info table with the contents of the local directory when a directory is selected.
         """
-        selected_path = event.path
-        if str(selected_path) != "":
-            self.local_site.value = str(selected_path)
-            self.update_local_file_info_table()
+        self.local_file_selected = Path(event.path)
+        if str(self.local_file_selected) != "":
+            self.local_site.value = str(self.local_file_selected)
+            if self.local_file_selected.is_dir():
+                self.update_local_file_info_table()
 
     def update_local_file_info_table(self) -> None:
         """
@@ -219,15 +221,17 @@ class FileTuilla(App):
             f"{num_files} files and {num_dirs} directories, Total size: {total_size} B"
         )
 
+    @on(SFTPDirectoryTree.FileSelected, "#remote_file_tree")
     @on(SFTPDirectoryTree.DirectorySelected, "#remote_file_tree")
     def on_remote_file_tree_selected(
-        self, event: SFTPDirectoryTree.DirectorySelected
+        self,
+        event: SFTPDirectoryTree.DirectorySelected | SFTPDirectoryTree.FileSelected,
     ) -> None:
         """
         Update the remote file info table with the contents of the remote directory when a directory is selected.
         """
-        selected_path = event.path
-        self.remote_site.value = selected_path
+        self.remote_file_selected = event.path
+        self.remote_site.value = self.remote_file_selected
         self._load_remote_file_info()
 
     def update_remote_directory_tree(self, dirs: list[str]) -> None:
@@ -315,29 +319,6 @@ class FileTuilla(App):
             f"{num_files} files and {num_dirs} directories, Total size: {total_size} B"
         )
 
-    @on(DataTable.RowHighlighted, "#local_files_table")
-    @on(DataTable.RowSelected, "#local_files_table")
-    def on_local_row_selected(self, event: DataTable.RowSelected) -> None:
-        """
-        Set the locally selected file when a row is selected (Enter pressed).
-        """
-        parent_path = Path(self.local_site.value)
-        table: DataTable = event.data_table
-        selected_row = table.get_row(event.row_key)
-        self.local_file_selected = parent_path / selected_row[0]
-
-    @on(SFTPDirectoryTree.DirectorySelected)
-    def on_remote_files_table_selected(
-        self, event: SFTPDirectoryTree.DirectorySelected
-    ) -> None:
-        """
-        Set the remote selected file when a row is selected (Enter pressed).
-        """
-        parent_path = event.path
-
-        if self.local_file_selected.exists():
-            self.remote_file_selected = f"{parent_path}/{self.local_file_selected.name}"
-
     # ----------- Local button event handlers -----------
     @on(Button.Pressed, "#local_delete")
     def on_local_delete(self, event: Button.Pressed) -> None:
@@ -406,7 +387,10 @@ class FileTuilla(App):
         Uploads a file to the server
         """
         # TODO - Verify with user if they want to upload
-        self.upload()
+        if self.ftp_client is not None:
+            self.upload()
+        else:
+            self.push_screen(WarningScreen("You are not connected!", cancel=False))
 
     @work(exclusive=True, thread=True, group="upload")
     def upload(self) -> None:
