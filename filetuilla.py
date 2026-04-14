@@ -10,7 +10,7 @@ from pathlib import Path
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.widgets import Button, DataTable, DirectoryTree, Header
+from textual.widgets import Button, DataTable, DirectoryTree, Footer, Header
 from textual.widgets import Input, Label, RichLog
 from textual.worker import get_current_worker
 
@@ -102,6 +102,7 @@ class FileTuilla(App):
             # Transfer info
             id="main_container",
         )
+        yield Footer()
 
     def on_mount(self) -> None:
         self.title = "FileTuilla"
