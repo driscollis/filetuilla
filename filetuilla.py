@@ -526,17 +526,40 @@ class FileTuilla(App):
         """
         Delete the remote file from the server
         """
-        try:
-            if self.ftp_client is not None and self.remote_file_selected is not None:
-                sftp_utils.delete_file(self.remote_file_selected, self.ftp_client)
-            else:
-                log(self, "error", "You are not connected!")
-        except Exception as e:
-            log(
-                self,
-                "error",
-                f"Error deleting remote file {self.remote_file_selected} {e}",
-            )
+        if self.ftp_client is not None:
+            self.remote_delete()
+        else:
+            self.push_screen(WarningScreen("You are not connected!", cancel=False))
+
+    @work(exclusive=True, thread=True, group="remote_delete")
+    def remote_delete(self) -> None:
+        worker = get_current_worker()
+        remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
+
+        sftp_lock = remote_tree.get_sftp_lock()
+        with sftp_lock:
+            try:
+                if (
+                    self.ftp_client is not None
+                    and self.remote_file_selected is not None
+                ):
+                    sftp_utils.delete_file(self.remote_file_selected, self.ftp_client)
+                    if not worker.is_cancelled:
+                        self.call_from_thread(
+                            log,
+                            self,
+                            "success",
+                            f"Successfully deleted {self.remote_file_selected} from remote server",
+                        )
+                        self.call_from_thread(self.update_remote_ui)
+            except Exception as e:
+                if not worker.is_cancelled:
+                    self.call_from_thread(
+                        log,
+                        self,
+                        "error",
+                        f"Error deleting remote file {self.remote_file_selected} {e}",
+                    )
 
 
 if __name__ == "__main__":
