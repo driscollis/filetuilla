@@ -414,22 +414,23 @@ class FileTuilla(App):
 
         try:
             with sftp_lock:
-                if self.ftp_client is not None:
-                    if self.local_file_selected.is_file():
-                        # Upload a file
-                        upload_path = f"{self.remote_folder_selected}/{self.local_file_selected.name}"
-                        sftp_utils.upload_file(
-                            self.local_file_selected, upload_path, self.ftp_client
+                if self.local_file_selected.is_file() and self.ftp_client is not None:
+                    # Upload a file
+                    upload_path = (
+                        f"{self.remote_folder_selected}/{self.local_file_selected.name}"
+                    )
+                    sftp_utils.upload_file(
+                        self.local_file_selected, upload_path, self.ftp_client
+                    )
+                    if not worker.is_cancelled:
+                        self.call_from_thread(
+                            log,
+                            self,
+                            "success",
+                            f"Successfully uploaded {self.local_file_selected} to {self.remote_file_selected} "
+                            "on remote server",
                         )
-                        if not worker.is_cancelled:
-                            self.call_from_thread(
-                                log,
-                                self,
-                                "success",
-                                f"Successfully uploaded {self.local_file_selected} to {self.remote_file_selected} "
-                                "on remote server",
-                            )
-                            self.call_from_thread(self.update_remote_ui)
+                        self.call_from_thread(self.update_remote_ui)
         except Exception as e:
             if not worker.is_cancelled:
                 self.call_from_thread(
@@ -439,7 +440,15 @@ class FileTuilla(App):
                     f"Error uploading remote file {self.remote_file_selected}: {e}",
                 )
 
-    def update_remote_ui(self):
+    def update_local_ui(self) -> None:
+        """
+        Update the local tree and the local table UI after a file operation
+        """
+        local_tree = self.query_one("#local_file_tree", DirectoryTree)
+        local_tree.reload()
+        self.update_local_file_info_table()
+
+    def update_remote_ui(self) -> None:
         """
         Update the remote tree and remote table UI after a file operation that changes
         the remote directory contents (upload, delete, rename, new folder)
@@ -455,21 +464,52 @@ class FileTuilla(App):
 
         Downloads a file from the server
         """
+        if self.ftp_client is not None:
+            # TODO - Verify with user if they want to download
+            self.download()
+        else:
+            self.push_screen(WarningScreen("You are not connected!", cancel=False))
+
+    @work(exclusive=True, thread=True, group="download")
+    def download(self) -> None:
+        """
+        Download the file from the server
+        """
         worker = get_current_worker()
         remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
 
         sftp_lock = remote_tree.get_sftp_lock()
-        # TODO - Verify with user if they want to download
         try:
             with sftp_lock:
-                if self.ftp_client is not None:
+                if (
+                    self.ftp_client is not None
+                    and self.remote_file_selected is not None
+                ):
                     # Check if the remote item is a file or a folder
-
-                    log(self, "info", "Download functionality not implemented yet")
-                else:
-                    self.push_screen(
-                        WarningScreen("You are not connected!", cancel=False)
-                    )
+                    attrs = self.ftp_client.stat(self.remote_file_selected)
+                    mode = attrs.st_mode
+                    if stat.S_ISREG(mode):
+                        # The selected remote item is a file
+                        local_path = (
+                            Path(self.local_site.value)
+                            / Path(self.remote_file_selected).name
+                        )
+                        sftp_utils.download_file(
+                            self.remote_file_selected, local_path, self.ftp_client
+                        )
+                        if not worker.is_cancelled:
+                            self.call_from_thread(
+                                log,
+                                self,
+                                "success",
+                                f"Successfully downloaded {self.remote_file_selected} to {local_path} on local machine",
+                            )
+                            self.call_from_thread(self.update_local_ui)
+                    elif stat.S_ISDIR(mode):
+                        # The selected remote item is a directory - Need to recursively download all contents
+                        self.notify(
+                            "Directory download not implemented yet", severity="warning"
+                        )
         except Exception as e:
             if not worker.is_cancelled:
                 self.call_from_thread(
