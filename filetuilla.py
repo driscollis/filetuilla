@@ -561,6 +561,47 @@ class FileTuilla(App):
                         f"Error deleting remote file {self.remote_file_selected} {e}",
                     )
 
+    @on(Button.Pressed, "#remote_rename")
+    def on_remote_rename(self, event: Button.Pressed) -> None:
+        """
+        Event handler for remote rename button
+
+        Shows the rename screen dialog to the user
+        """
+        if self.remote_file_selected is not None:
+            self.push_screen(  # type: ignore
+                RenameScreen(self.remote_file_selected),
+                self.rename_remote_file,
+            )
+        else:
+            self.push_screen(WarningScreen("No file selected", cancel=False))
+
+    @work(exclusive=True, thread=True, group="remote_rename")
+    def rename_remote_file(self, new_name: str | bool = False) -> None:
+        """
+        Rename the remote file on the server
+        """
+        worker = get_current_worker()
+        remote_tree = self.query_one("#remote_file_tree", SFTPDirectoryTree)
+
+        sftp_lock = remote_tree.get_sftp_lock()
+        with sftp_lock:
+            if (
+                isinstance(new_name, str)
+                and self.ftp_client is not None
+                and self.remote_file_selected is not None
+            ):
+                sftp_utils.rename_file(
+                    self.remote_file_selected, new_name, self.ftp_client
+                )
+                if not worker.is_cancelled:
+                    self.call_from_thread(
+                        log,
+                        self,
+                        "success",
+                        f"Successfully renamed {self.remote_file_selected} to {new_name}",
+                    )
+
 
 if __name__ == "__main__":
     app = FileTuilla()

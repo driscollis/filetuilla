@@ -10,10 +10,13 @@ from textual.widgets import Button, Header, Label, Input
 class RenameScreen(ModalScreen):
     CSS_PATH = "rename_screen.tcss"
 
-    def __init__(self, file_path: Path, *args, **kwargs) -> None:
+    def __init__(
+        self, file_path: Path | str, remote: bool = True, *args, **kwargs
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.file_path = file_path
         self.title = "Rename File"
+        self.remote = remote
 
     def compose(self) -> ComposeResult:
         yield Vertical(
@@ -34,7 +37,10 @@ class RenameScreen(ModalScreen):
         Event handler for when the save button is pressed
         """
         new_file_name = self.query_one("#new_file_input", Input).value
-        if new_file_name:
+        if self.remote and new_file_name:
+            # Remote file paths need to be strings
+            self.dismiss(str(new_file_name))
+        elif new_file_name:
             self.dismiss(Path(new_file_name))
             return
         self.dismiss(False)
