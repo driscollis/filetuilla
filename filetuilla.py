@@ -458,6 +458,7 @@ class FileTuilla(App):
         remote_tree.reload()
         self.update_remote_file_info_table()
 
+    # ----------- Remote button event handlers -----------
     @on(Button.Pressed, "#download")
     def on_download(self, event: Button.Pressed) -> None:
         """
@@ -519,6 +520,23 @@ class FileTuilla(App):
                     "error",
                     f"Error downloading remote file {self.remote_file_selected}: {e}",
                 )
+
+    @on(Button.Pressed, "#remote_delete")
+    def on_remote_delete(self, event: Button.Pressed) -> None:
+        """
+        Delete the remote file from the server
+        """
+        try:
+            if self.ftp_client is not None and self.remote_file_selected is not None:
+                sftp_utils.delete_file(self.remote_file_selected, self.ftp_client)
+            else:
+                log(self, "error", "You are not connected!")
+        except Exception as e:
+            log(
+                self,
+                "error",
+                f"Error deleting remote file {self.remote_file_selected} {e}",
+            )
 
 
 if __name__ == "__main__":

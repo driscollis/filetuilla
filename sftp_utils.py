@@ -2,6 +2,13 @@ import paramiko
 from pathlib import Path
 
 
+def delete_file(remote_file: str, ftp_client: paramiko.sftp_client.SFTPClient) -> None:
+    """
+    Delete a file over SFTP
+    """
+    ftp_client.remove(remote_file)
+
+
 def download_file(
     remote_file: str, local_file: Path, ftp_client: paramiko.sftp_client.SFTPClient
 ) -> None:
