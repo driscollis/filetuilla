@@ -470,6 +470,7 @@ class FileTuilla(App):
         else:
             self.push_screen(WarningScreen("You are not connected!", cancel=False))
 
+    @work(exclusive=True, thread=True, group="download")
     def download(self) -> None:
         """
         Download the file from the server
