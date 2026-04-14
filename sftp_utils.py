@@ -3,12 +3,12 @@ from pathlib import Path
 
 
 def download_file(
-    remote_file: str, local_dir: Path, ftp_client: paramiko.sftp_client.SFTPClient
+    remote_file: str, local_file: Path, ftp_client: paramiko.sftp_client.SFTPClient
 ) -> None:
     """
     Download a file over SFTP
     """
-    ftp_client.get(remote_file, local_dir.joinpath(Path(remote_file).name))
+    ftp_client.get(remote_file, local_file)
 
 
 def upload_file(
